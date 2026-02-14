@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                          x:Class="FoodApp.Views.Auth.LoginPage"
+                                       Title="ورود به سیستم"
+                                                    FlowDirection="RightToLeft">
+
+                                                        <VerticalStackLayout Spacing="20" Padding="30" VerticalOptions="Center">
+
+                                                                <Label Text="FoodApp" 
+                                                                               FontSize="32" 
+                                                                                              HorizontalOptions="Center"
+                                                                                                             FontAttributes="Bold"/>
+
+                                                                                                                     <Label Text="سیستم جیره غذایی" 
+                                                                                                                                    FontSize="18" 
+                                                                                                                                                   HorizontalOptions="Center"
+                                                                                                                                                                  TextColor="Gray"/>
+
+                                                                                                                                                                          <Entry x:Name="UsernameEntry"
+                                                                                                                                                                                         Placeholder="نام کاربری"
+                                                                                                                                                                                                        FontSize="18"/>
+
+                                                                                                                                                                                                                <Entry x:Name="PasswordEntry"
+                                                                                                                                                                                                                               Placeholder="رمز عبور"
+                                                                                                                                                                                                                                              IsPassword="True"
+                                                                                                                                                                                                                                                             FontSize="18"/>
+
+                                                                                                                                                                                                                                                                     <Button Text="ورود"
+                                                                                                                                                                                                                                                                                     Clicked="OnLoginClicked"
+                                                                                                                                                                                                                                                                                                     FontSize="18"
+                                                                                                                                                                                                                                                                                                                     BackgroundColor="#512BD4"/>
+
+                                                                                                                                                                                                                                                                                                                             <Label x:Name="ErrorLabel"
+                                                                                                                                                                                                                                                                                                                                            TextColor="Red"
+                                                                                                                                                                                                                                                                                                                                                           IsVisible="false"
+                                                                                                                                                                                                                                                                                                                                                                          HorizontalOptions="Center"/>
+
+                                                                                                                                                                                                                                                                                                                                                                              </VerticalStackLayout>
+                                                                                                                                                                                                                                                                                                                                                                              </ContentPage>

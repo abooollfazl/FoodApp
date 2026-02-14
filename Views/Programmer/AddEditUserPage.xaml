@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                          x:Class="FoodApp.Views.Programmer.AddEditUserPage"
+                                       Title="کاربر"
+                                                    FlowDirection="RightToLeft">
+
+                                                        <VerticalStackLayout Padding="30" Spacing="15">
+                                                                
+                                                                        <Entry x:Name="NameEntry" Placeholder="نام کامل"/>
+                                                                                <Entry x:Name="UsernameEntry" Placeholder="نام کاربری"/>
+                                                                                        <Entry x:Name="PasswordEntry" Placeholder="رمز عبور" IsPassword="True"/>
+                                                                                                
+                                                                                                        <Picker x:Name="RolePicker" Title="نقش">
+                                                                                                                    <Picker.Items>
+                                                                                                                                    <x:String>Programmer</x:String>
+                                                                                                                                                    <x:String>Manager</x:String>
+                                                                                                                                                                    <x:String>Normal</x:String>
+                                                                                                                                                                                </Picker.Items>
+                                                                                                                                                                                        </Picker>
+
+                                                                                                                                                                                                <Button Text="ذخیره" Clicked="OnSaveClicked" BackgroundColor="Green"/>
+
+                                                                                                                                                                                                    </VerticalStackLayout>
+                                                                                                                                                                                                    </ContentPage>

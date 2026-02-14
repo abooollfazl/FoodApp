@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                          x:Class="FoodApp.Views.Programmer.ProgrammerMainPage"
+                                       Title="پنل برنامه‌نویس"
+                                                    FlowDirection="RightToLeft">
+
+                                                        <Grid RowDefinitions="*,Auto">
+                                                                
+                                                                        <VerticalStackLayout Grid.Row="0" Padding="20" Spacing="15">
+                                                                                    <Label x:Name="WelcomeLabel" FontSize="20" FontAttributes="Bold"/>
+                                                                                                
+                                                                                                            <Button Text="مدیریت کاربران" Clicked="OnManageUsersClicked"/>
+                                                                                                                        <Button Text="مشاهده همه جیره‌ها" Clicked="OnViewAllPlansClicked"/>
+                                                                                                                                    <Button Text="جیره خودم" Clicked="OnMyPlanClicked"/>
+                                                                                                                                            </VerticalStackLayout>
+
+                                                                                                                                                    <Button Grid.Row="1" 
+                                                                                                                                                                    Text="رفتن به چت" 
+                                                                                                                                                                                    Clicked="OnGoToChatClicked"
+                                                                                                                                                                                                    Margin="20"/>
+
+                                                                                                                                                                                                        </Grid>
+                                                                                                                                                                                                        </ContentPage>

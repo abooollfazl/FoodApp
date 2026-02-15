@@ -6,11 +6,11 @@ namespace FoodApp.Views.Programmer;
 
 public partial class AddEditUserPage : ContentPage
 {
-    private readonly User _user;
+    private readonly FoodApp.Models.User _user;
         private readonly AppDatabase _database;
             private readonly bool _isEditing;
 
-                public AddEditUserPage(User user)
+                public AddEditUserPage(FoodApp.Models.User user)
                     {
                             InitializeComponent();
                                     

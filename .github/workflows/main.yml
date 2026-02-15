@@ -13,10 +13,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup .NET 8
+    - name: Setup .NET 9
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '8.0.x'
+        dotnet-version: '9.0.x'
         
     - name: Install MAUI workloads
       run: |
@@ -29,7 +29,7 @@ jobs:
     - name: Build Android APK
       run: >
         dotnet publish 
-        -f net8.0-android 
+        -f net9.0-android 
         -c Release 
         -p:AndroidPackageFormat=apk
         --no-restore
@@ -38,5 +38,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: FoodApp-APK
-        path: bin/Release/net8.0-android/publish/*.apk
+        path: bin/Release/net9.0-android/publish/*.apk
         if-no-files-found: error

@@ -29,7 +29,7 @@ public partial class ManageUsersPage : ContentPage
                                                                                                     private async void OnEditClicked(object sender, EventArgs e)
                                                                                                         {
                                                                                                                 var button = sender as Button;
-                                                                                                                        var user = button?.CommandParameter as User;
+                                                                                                                        var user = button?.CommandParameter as FoodApp.Models.User;
                                                                                                                                 if (user != null)
                                                                                                                                         {
                                                                                                                                                     await Navigation.PushAsync(new AddEditUserPage(user));
@@ -39,7 +39,7 @@ public partial class ManageUsersPage : ContentPage
                                                                                                                                                                     private async void OnDeleteClicked(object sender, EventArgs e)
                                                                                                                                                                         {
                                                                                                                                                                                 var button = sender as Button;
-                                                                                                                                                                                        var user = button?.CommandParameter as User;
+                                                                                                                                                                                        var user = button?.CommandParameter as FoodApp.Models.User;
                                                                                                                                                                                                 
                                                                                                                                                                                                         if (user != null)
                                                                                                                                                                                                                 {

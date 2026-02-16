@@ -7,67 +7,74 @@ namespace FoodApp.Views.Programmer;
 public partial class AddEditUserPage : ContentPage
 {
     private readonly FoodApp.Models.User _user;
-        private readonly AppDatabase _database;
-            private readonly bool _isEditing;
+    private readonly AppDatabase _database;
+    private readonly bool _isEditing;
 
-                public AddEditUserPage(FoodApp.Models.User user)
-                    {
-                            InitializeComponent();
-                                    
-                                            var dbPath = Path.Combine(FileSystem.AppDataDirectory, "foodapp.db");
-                                                    _database = new AppDatabase(dbPath);
-                                                            
-                                                                    _user = user;
-                                                                            _isEditing = user != null;
+    public AddEditUserPage(FoodApp.Models.User user)
+    {
+        InitializeComponent();
+        
+        var dbPath = Path.Combine(FileSystem.AppDataDirectory, "foodapp.db");
+        _database = new AppDatabase(dbPath);
+        
+        _user = user;
+        _isEditing = user != null;
 
-                                                                                    if (_isEditing)
-                                                                                            {
-                                                                                                        NameEntry.Text = user.Name;
-                                                                                                                    UsernameEntry.Text = user.Username;
-                                                                                                                                PasswordEntry.Text = user.Password;
-                                                                                                                                            RolePicker.SelectedItem = user.Role.ToString();
-                                                                                                                                                        Title = "ویرایش کاربر";
-                                                                                                                                                                }
-                                                                                                                                                                        else
-                                                                                                                                                                                {
-                                                                                                                                                                                            Title = "کاربر جدید";
-                                                                                                                                                                                                    }
-                                                                                                                                                                                                        }
+        if (_isEditing)
+        {
+            NameEntry.Text = user.Name;
+            UsernameEntry.Text = user.Username;
+            PasswordEntry.Text = user.Password;
+            RolePicker.SelectedItem = user.Role.ToString();
+            Title = "ویرایش کاربر";
+        }
+        else
+        {
+            Title = "کاربر جدید";
+        }
+    }
 
-                                                                                                                                                                                                            private async void OnSaveClicked(object sender, EventArgs e)
-                                                                                                                                                                                                                {
-                                                                                                                                                                                                                        if (string.IsNullOrWhiteSpace(NameEntry.Text) ||
-                                                                                                                                                                                                                                    string.IsNullOrWhiteSpace(UsernameEntry.Text) ||
-                                                                                                                                                                                                                                                string.IsNullOrWhiteSpace(PasswordEntry.Text) ||
-                                                                                                                                                                                                                                                            RolePicker.SelectedItem == null)
-                                                                                                                                                                                                                                                                    {
-                                                                                                                                                                                                                                                                                await DisplayAlert("خطا", "همه فیلدها را پر کنید", "باشه");
-                                                                                                                                                                                                                                                                                            return;
-                                                                                                                                                                                                                                                                                                    }
+    private async void OnSaveClicked(object? sender, EventArgs e)  // ✅ object? شد
+    {
+        if (string.IsNullOrWhiteSpace(NameEntry.Text) ||
+            string.IsNullOrWhiteSpace(UsernameEntry.Text) ||
+            string.IsNullOrWhiteSpace(PasswordEntry.Text) ||
+            RolePicker.SelectedItem == null)
+        {
+            await DisplayAlert("خطا", "همه فیلدها را پر کنید", "باشه");
+            return;
+        }
 
-                                                                                                                                                                                                                                                                                                            var role = Enum.Parse<UserRole>(RolePicker.SelectedItem.ToString());
+        var role = Enum.Parse<UserRole>(RolePicker.SelectedItem.ToString());
 
-                                                                                                                                                                                                                                                                                                                    if (_isEditing)
-                                                                                                                                                                                                                                                                                                                            {
-                                                                                                                                                                                                                                                                                                                                        _user.Name = NameEntry.Text;
-                                                                                                                                                                                                                                                                                                                                                    _user.Username = UsernameEntry.Text;
-                                                                                                                                                                                                                                                                                                                                                                _user.Password = PasswordEntry.Text;
-                                                                                                                                                                                                                                                                                                                                                                            _user.Role = role;
-                                                                                                                                                                                                                                                                                                                                                                                        await _database.UpdateUserAsync(_user);
-                                                                                                                                                                                                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                                                                                                                                                                                        else
-                                                                                                                                                                                                                                                                                                                                                                                                                {
-                                                                                                                                                                                                                                                                                                                                                                                                                            var newUser = new FoodApp.Models.User
-                                                                                                                                                                                                                                                                                                                                                                                                                                        {
-                                                                                                                                                                                                                                                                                                                                                                                                                                                        Name = NameEntry.Text,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                        Username = UsernameEntry.Text,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        Password = PasswordEntry.Text,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        Role = role,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        CreatedBy = AuthService.GetCurrentUser()?.Id
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    };
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                await _database.SaveUserAsync(newUser);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
+        if (_isEditing)
+        {
+            _user.Name = NameEntry.Text;
+            _user.Username = UsernameEntry.Text;
+            _user.Password = PasswordEntry.Text;
+            _user.Role = role;
+            await _database.UpdateUserAsync(_user);
+            
+            // ✅ Broadcast آپدیت کاربر
+            await App.SyncService.BroadcastUserAsync(_user);
+        }
+        else
+        {
+            var newUser = new FoodApp.Models.User
+            {
+                Name = NameEntry.Text,
+                Username = UsernameEntry.Text,
+                Password = PasswordEntry.Text,
+                Role = role,
+                CreatedBy = AuthService.GetCurrentUser()?.Id
+            };
+            
+            await _database.SaveUserAsync(newUser);
+            
+            // ✅ Broadcast کاربر جدید
+            await App.SyncService.BroadcastUserAsync(newUser);
+        }
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                await Navigation.PopAsync();
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    }
+        await Navigation.PopAsync();
+    }
+}

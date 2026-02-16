@@ -25,6 +25,10 @@ namespace FoodApp.Database
                                                                                                                                                 public Task<List<MealPlan>> GetMealPlansAsync() => _database.Table<MealPlan>().ToListAsync();
                                                                                                                                                         public Task<MealPlan> GetMealPlanAsync(string userId, int week, int year) =>
                                                                                                                                                                     _database.Table<MealPlan>().Where(m => m.UserId == userId && m.WeekNumber == week && m.Year == year).FirstOrDefaultAsync();
+        // اضافه کردن به AppDatabase.cs
+public Task<MealPlan> GetMealPlanByIdAsync(string id) => 
+    _database.Table<MealPlan>().Where(m => m.Id == id).FirstOrDefaultAsync();
+        
                                                                                                                                                                             public Task<int> SaveMealPlanAsync(MealPlan plan) => _database.InsertAsync(plan);
                                                                                                                                                                                     public Task<int> UpdateMealPlanAsync(MealPlan plan)
                                                                                                                                                                                             {

@@ -51,7 +51,7 @@ public partial class App : Application
             var currentPage = Application.Current?.Windows[0]?.Page;
             if (currentPage != null)
             {
-                await currentPage.DisplayAlert(
+                await currentPage.DisplayAlertAsync(
                     $"پیام از {message.SenderName}", 
                     message.Content, 
                     "بستن");
@@ -73,3 +73,4 @@ public partial class App : Application
         base.OnResume();
     }
 }
+

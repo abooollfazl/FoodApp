@@ -3,51 +3,54 @@ using SQLite;
 namespace FoodApp.Models
 {
     public class MealPlan
-        {
-                [PrimaryKey]
-                        public string Id { get; set; } = Guid.NewGuid().ToString();
-                                
-                                        public string UserId { get; set; }
-                                                public int WeekNumber { get; set; }
-                                                        public int Year { get; set; }
-                                                                
-                                                                        // شنبه
-                                                                                public bool SaturdayBreakfast { get; set; }
-                                                                                        public bool SaturdayLunch { get; set; }
-                                                                                                public bool SaturdayDinner { get; set; }
-                                                                                                        
-                                                                                                                // یکشنبه
-                                                                                                                        public bool SundayBreakfast { get; set; }
-                                                                                                                                public bool SundayLunch { get; set; }
-                                                                                                                                        public bool SundayDinner { get; set; }
-                                                                                                                                                
-                                                                                                                                                        // دوشنبه
-                                                                                                                                                                public bool MondayBreakfast { get; set; }
-                                                                                                                                                                        public bool MondayLunch { get; set; }
-                                                                                                                                                                                public bool MondayDinner { get; set; }
-                                                                                                                                                                                        
-                                                                                                                                                                                                // سه‌شنبه
-                                                                                                                                                                                                        public bool TuesdayBreakfast { get; set; }
-                                                                                                                                                                                                                public bool TuesdayLunch { get; set; }
-                                                                                                                                                                                                                        public bool TuesdayDinner { get; set; }
-                                                                                                                                                                                                                                
-                                                                                                                                                                                                                                        // چهارشنبه
-                                                                                                                                                                                                                                                public bool WednesdayBreakfast { get; set; }
-                                                                                                                                                                                                                                                        public bool WednesdayLunch { get; set; }
-                                                                                                                                                                                                                                                                public bool WednesdayDinner { get; set; }
-                                                                                                                                                                                                                                                                        
-                                                                                                                                                                                                                                                                                // پنجشنبه
-                                                                                                                                                                                                                                                                                        public bool ThursdayBreakfast { get; set; }
-                                                                                                                                                                                                                                                                                                public bool ThursdayLunch { get; set; }
-                                                                                                                                                                                                                                                                                                        public bool ThursdayDinner { get; set; }
-                                                                                                                                                                                                                                                                                                                
-                                                                                                                                                                                                                                                                                                                        // جمعه
-                                                                                                                                                                                                                                                                                                                                public bool FridayBreakfast { get; set; }
-                                                                                                                                                                                                                                                                                                                                        public bool FridayLunch { get; set; }
-                                                                                                                                                                                                                                                                                                                                                public bool FridayDinner { get; set; }
-                                                                                                                                                                                                                                                                                                                                                        
-                                                                                                                                                                                                                                                                                                                                                                public DateTime LastModified { get; set; } = DateTime.Now;
-                                                                                                                                                                                                                                                                                                                                                                        public string LastModifiedBy { get; set; }
-                                                                                                                                                                                                                                                                                                                                                                                public long Version { get; set; } = 1;
-                                                                                                                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                                                                                                                                                    }
+    {
+        [PrimaryKey]
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+
+        public string UserId { get; set; } = string.Empty;
+        public int WeekNumber { get; set; }
+        public int Year { get; set; }
+
+        // شنبه
+        public bool SaturdayBreakfast { get; set; }
+        public bool SaturdayLunch { get; set; }
+        public bool SaturdayDinner { get; set; }
+
+        // یکشنبه
+        public bool SundayBreakfast { get; set; }
+        public bool SundayLunch { get; set; }
+        public bool SundayDinner { get; set; }
+
+        // دوشنبه
+        public bool MondayBreakfast { get; set; }
+        public bool MondayLunch { get; set; }
+        public bool MondayDinner { get; set; }
+
+        // سه‌شنبه
+        public bool TuesdayBreakfast { get; set; }
+        public bool TuesdayLunch { get; set; }
+        public bool TuesdayDinner { get; set; }
+
+        // چهارشنبه
+        public bool WednesdayBreakfast { get; set; }
+        public bool WednesdayLunch { get; set; }
+        public bool WednesdayDinner { get; set; }
+
+        // پنجشنبه
+        public bool ThursdayBreakfast { get; set; }
+        public bool ThursdayLunch { get; set; }
+        public bool ThursdayDinner { get; set; }
+
+        // جمعه
+        public bool FridayBreakfast { get; set; }
+        public bool FridayLunch { get; set; }
+        public bool FridayDinner { get; set; }
+
+        public DateTime LastModified { get; set; } = DateTime.Now;
+        public string LastModifiedBy { get; set; } = string.Empty;
+        public long Version { get; set; } = 1;
+        
+        // جدید: برای sync
+        public bool IsSynced { get; set; } = false;
+    }
+}

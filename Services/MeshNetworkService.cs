@@ -66,17 +66,9 @@ namespace FoodApp.Services
         _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
         
-        // ✅ اضافه کردن Join Multicast
-        try
-        {
-            var multicastAddress = IPAddress.Parse("239.255.42.99");
-            _udpClient.JoinMulticastGroup(multicastAddress);
-            Log("به گروه multicast پیوست");
-        }
-        catch (Exception ex)
-        {
-            Log($"خطای join multicast: {ex.Message}");
-        }
+        // ❌ حذف Multicast
+        // فقط Broadcast
+        _udpClient.EnableBroadcast = true;
 
         _isRunning = true;
 
@@ -296,42 +288,7 @@ namespace FoodApp.Services
 
         // ========== Private Send Helpers ==========
 
-        private async Task BroadcastPacketAsync(SyncPacket packet)
-{
-    try
-    {
-        var json = JsonSerializer.Serialize(packet);
-        var bytes = Encoding.UTF8.GetBytes(json);
-
-        // ✅ روش 1: Multicast (قابل اعتمادتر از Broadcast)
-        try
-        {
-            var multicastAddress = IPAddress.Parse("239.255.42.99");
-            await _udpClient!.SendAsync(bytes, bytes.Length, new IPEndPoint(multicastAddress, _port));
-        }
-        catch (Exception ex)
-        {
-            Log($"خطای multicast: {ex.Message}");
-        }
-
-        // ✅ روش 2: Direct به همه known peers
-        foreach (var peer in _knownPeers.Values.ToList())
-        {
-            try
-            {
-                await _udpClient!.SendAsync(bytes, bytes.Length, peer);
-            }
-            catch
-            {
-                // Ignore individual peer errors
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        Log($"خطای ارسال: {ex.Message}");
-    }
-        }
+        
 
         private async Task SendToPeerAsync(SyncPacket packet, string peerId)
         {
@@ -347,7 +304,44 @@ namespace FoodApp.Services
             catch { }
         }
 
-        // ========== Background Tasks ==========
+  private async Task BroadcastPacketAsync(SyncPacket packet)
+{
+    try
+    {
+        var json = JsonSerializer.Serialize(packet);
+        var bytes = Encoding.UTF8.GetBytes(json);
+
+        // ✅ روش 1: Broadcast به subnet محلی
+        try
+        {
+            await _udpClient!.SendAsync(bytes, bytes.Length, new IPEndPoint(IPAddress.Broadcast, _port));
+        }
+        catch (Exception ex)
+        {
+            Log($"خطای broadcast: {ex.Message}");
+        }
+
+        // ✅ روش 2: Direct به همه known peers
+        foreach (var peer in _knownPeers.Values.ToList())
+        {
+            try
+            {
+                await _udpClient!.SendAsync(bytes, bytes.Length, peer);
+            }
+            catch
+            {
+                // Ignore
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Log($"خطای ارسال: {ex.Message}");
+    }
+  }
+        
+        
+    // ========== Background Tasks ==========
 
         private async Task BroadcastPresenceAsync()
         {

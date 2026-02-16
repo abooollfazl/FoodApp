@@ -32,6 +32,9 @@ namespace FoodApp.Services
     public class MeshNetworkService
     {
         private UdpClient? _udpClient;
+        private TcpListener? _tcpListener;
+        private readonly int _tcpPort = 8889;
+        private readonly Dictionary<string, TcpClient> _tcpClients = new();
         private readonly int _port = 8888;
         private bool _isRunning = false;
         private string _deviceId = string.Empty;
@@ -69,6 +72,19 @@ namespace FoodApp.Services
         // ❌ حذف Multicast
         // فقط Broadcast
         _udpClient.EnableBroadcast = true;
+        
+        // ✅ TCP Listener برای دریافت داده‌های مهم
+try
+{
+    _tcpListener = new TcpListener(IPAddress.Any, _tcpPort);
+    _tcpListener.Start();
+    _ = TcpListenLoopAsync();
+    Log($"TCP Listener استارت شد روی پورت {_tcpPort}");
+}
+catch (Exception ex)
+{
+    Log($"خطای TCP Listener: {ex.Message}");
+}
 
         _isRunning = true;
 
@@ -339,6 +355,71 @@ namespace FoodApp.Services
         Log($"خطای ارسال: {ex.Message}");
     }
   }
+        // ========== TCP Methods ==========
+
+private async Task TcpListenLoopAsync()
+{
+    while (_isRunning && _tcpListener != null)
+    {
+        try
+        {
+            var client = await _tcpListener.AcceptTcpClientAsync();
+            _ = HandleTcpClientAsync(client);
+        }
+        catch { }
+    }
+}
+
+private async Task HandleTcpClientAsync(TcpClient client)
+{
+    try
+    {
+        using var stream = client.GetStream();
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        
+        var json = await reader.ReadLineAsync();
+        if (!string.IsNullOrEmpty(json))
+        {
+            var packet = JsonSerializer.Deserialize<SyncPacket>(json);
+            if (packet != null)
+            {
+                // Process packet (مثل UDP)
+                // ... (کد پردازش packet)
+            }
+        }
+        
+        client.Close();
+    }
+    catch { }
+}
+
+public async Task SendTcpPacketAsync(SyncPacket packet, string peerId)
+{
+    try
+    {
+        if (!_tcpClients.ContainsKey(peerId) || !_tcpClients[peerId].Connected)
+        {
+            // Connect to peer
+            if (_knownPeers.TryGetValue(peerId, out var endpoint))
+            {
+                var client = new TcpClient();
+                await client.ConnectAsync(endpoint.Address, _tcpPort);
+                _tcpClients[peerId] = client;
+            }
+        }
+
+        if (_tcpClients.TryGetValue(peerId, out var tcpClient) && tcpClient.Connected)
+        {
+            var json = JsonSerializer.Serialize(packet);
+            var bytes = Encoding.UTF8.GetBytes(json + "\n");
+            await tcpClient.GetStream().WriteAsync(bytes, 0, bytes.Length);
+        }
+    }
+    catch (Exception ex)
+    {
+        Log($"خطای TCP ارسال: {ex.Message}");
+    }
+}
         
         
     // ========== Background Tasks ==========

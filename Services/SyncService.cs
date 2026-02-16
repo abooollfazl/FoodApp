@@ -12,12 +12,14 @@ namespace FoodApp.Services
         private readonly AppDatabase _database;
         private readonly MeshNetworkService _networkService;
         private readonly HashSet<string> _processedSyncIds = new();
+        private readonly string _deviceId;
         private bool _isInitialized = false;
 
         public SyncService(AppDatabase database, MeshNetworkService networkService)
         {
             _database = database;
             _networkService = networkService;
+            _deviceId = Preferences.Get("DeviceId", Guid.NewGuid().ToString());
         }
 
         public void Initialize()
@@ -26,7 +28,7 @@ namespace FoodApp.Services
 
             // Subscribe to network events
             _networkService.MealPlanReceived += OnMealPlanReceived;
-            _networkService.UserReceived += OnUserReceived;  // ✅ جدید
+            _networkService.UserReceived += OnUserReceived;
             _networkService.ChatMessageReceived += OnChatMessageReceived;
             _networkService.SyncRequestReceived += OnSyncRequestReceived;
             _networkService.PeerDiscovered += OnPeerDiscovered;
@@ -38,11 +40,39 @@ namespace FoodApp.Services
 
         public async Task BroadcastMealPlanAsync(MealPlan plan)
         {
+            // ✅ اول TCP به همه peerهای شناخته شده
+            var peers = _networkService.GetKnownPeers().Keys.ToList();
+            foreach (var peerId in peers)
+            {
+                await _networkService.SendTcpPacketAsync(new SyncPacket
+                {
+                    SenderId = _deviceId,
+                    DataType = SyncDataType.MealPlan,
+                    JsonData = JsonSerializer.Serialize(plan),
+                    Version = plan.Version
+                }, peerId);
+            }
+
+            // ✅ بعد UDP Broadcast
             await _networkService.BroadcastMealPlanAsync(plan);
         }
 
-        public async Task BroadcastUserAsync(User user)  // ✅ جدید
+        public async Task BroadcastUserAsync(User user)
         {
+            // ✅ اول TCP به همه peerهای شناخته شده
+            var peers = _networkService.GetKnownPeers().Keys.ToList();
+            foreach (var peerId in peers)
+            {
+                await _networkService.SendTcpPacketAsync(new SyncPacket
+                {
+                    SenderId = _deviceId,
+                    DataType = SyncDataType.User,
+                    JsonData = JsonSerializer.Serialize(user),
+                    Version = 1
+                }, peerId);
+            }
+
+            // ✅ بعد UDP Broadcast
             await _networkService.BroadcastUserAsync(user);
         }
 
@@ -61,6 +91,7 @@ namespace FoodApp.Services
                 Version = 1
             };
 
+            // Chat فقط UDP (real-time)
             await _networkService.BroadcastChatMessageAsync(message);
         }
 
@@ -109,7 +140,7 @@ namespace FoodApp.Services
             }
         }
 
-        private async void OnUserReceived(object? sender, User remoteUser)  // ✅ جدید
+        private async void OnUserReceived(object? sender, User remoteUser)
         {
             try
             {
@@ -140,7 +171,6 @@ namespace FoodApp.Services
 
         private void OnChatMessageReceived(object? sender, ChatMessage message)
         {
-            // Chat real-time - نیازی به ذخیره نیست (طبق نیاز شما)
             System.Diagnostics.Debug.WriteLine($"پیام دریافت شد از {message.SenderName}: {message.Content}");
         }
 

@@ -53,6 +53,7 @@ namespace FoodApp.Services
         public event EventHandler<string>? SyncRequestReceived;
         public event EventHandler<string>? PeerDiscovered;
         public event EventHandler<string>? LogMessage;
+        public event EventHandler<SyncPacket>? TcpPacketReceived;
 
         public MeshNetworkService()
         {
@@ -374,6 +375,9 @@ private async Task HandleTcpClientAsync(TcpClient client)
 {
     try
     {
+        var endpoint = client.Client.RemoteEndPoint as IPEndPoint;
+        var peerId = endpoint?.Address.ToString() ?? "unknown";
+        
         using var stream = client.GetStream();
         using var reader = new StreamReader(stream, Encoding.UTF8);
         
@@ -381,10 +385,20 @@ private async Task HandleTcpClientAsync(TcpClient client)
         if (!string.IsNullOrEmpty(json))
         {
             var packet = JsonSerializer.Deserialize<SyncPacket>(json);
-            if (packet != null)
+            if (packet != null && packet.SenderId != _deviceId)
             {
-                // Process packet (مثل UDP)
-                // ... (کد پردازش packet)
+                // Update peer info
+                if (endpoint != null)
+                {
+                    _knownPeers[packet.SenderId] = endpoint;
+                    _lastSeen[packet.SenderId] = DateTime.Now;
+                }
+
+                // Raise event برای پردازش
+                TcpPacketReceived?.Invoke(this, packet);
+                
+                // Relay به UDP برای بقیه
+                _ = RelayPacketAsync(packet, endpoint);
             }
         }
         

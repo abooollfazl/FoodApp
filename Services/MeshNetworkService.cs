@@ -59,26 +59,37 @@ namespace FoodApp.Services
         }
 
         public async Task StartAsync()
+{
+    try
+    {
+        _udpClient = new UdpClient();
+        _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
+        
+        // ✅ اضافه کردن Join Multicast
+        try
         {
-            try
-            {
-                _udpClient = new UdpClient();
-                _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
-                _udpClient.EnableBroadcast = true;
+            var multicastAddress = IPAddress.Parse("239.255.42.99");
+            _udpClient.JoinMulticastGroup(multicastAddress);
+            Log("به گروه multicast پیوست");
+        }
+        catch (Exception ex)
+        {
+            Log($"خطای join multicast: {ex.Message}");
+        }
 
-                _isRunning = true;
+        _isRunning = true;
 
-                _ = ReceiveLoopAsync();
-                _ = BroadcastPresenceAsync();
-                _ = CleanupStalePeersAsync();
+        _ = ReceiveLoopAsync();
+        _ = BroadcastPresenceAsync();
+        _ = CleanupStalePeersAsync();
 
-                Log("شبکه Mesh استارت شد");
-            }
-            catch (Exception ex)
-            {
-                Log($"خطای شبکه: {ex.Message}");
-            }
+        Log("شبکه Mesh استارت شد");
+    }
+    catch (Exception ex)
+    {
+        Log($"خطای شبکه: {ex.Message}");
+    }
         }
 
         private async Task ReceiveLoopAsync()
@@ -286,25 +297,40 @@ namespace FoodApp.Services
         // ========== Private Send Helpers ==========
 
         private async Task BroadcastPacketAsync(SyncPacket packet)
+{
+    try
+    {
+        var json = JsonSerializer.Serialize(packet);
+        var bytes = Encoding.UTF8.GetBytes(json);
+
+        // ✅ روش 1: Multicast (قابل اعتمادتر از Broadcast)
+        try
+        {
+            var multicastAddress = IPAddress.Parse("239.255.42.99");
+            await _udpClient!.SendAsync(bytes, bytes.Length, new IPEndPoint(multicastAddress, _port));
+        }
+        catch (Exception ex)
+        {
+            Log($"خطای multicast: {ex.Message}");
+        }
+
+        // ✅ روش 2: Direct به همه known peers
+        foreach (var peer in _knownPeers.Values.ToList())
         {
             try
             {
-                var json = JsonSerializer.Serialize(packet);
-                var bytes = Encoding.UTF8.GetBytes(json);
-
-                // Broadcast to local network
-                await _udpClient!.SendAsync(bytes, bytes.Length, new IPEndPoint(IPAddress.Broadcast, _port));
-
-                // Also send to all known peers directly (more reliable)
-                foreach (var peer in _knownPeers.Values)
-                {
-                    await _udpClient.SendAsync(bytes, bytes.Length, peer);
-                }
+                await _udpClient!.SendAsync(bytes, bytes.Length, peer);
             }
-            catch (Exception ex)
+            catch
             {
-                Log($"خطای ارسال: {ex.Message}");
+                // Ignore individual peer errors
             }
+        }
+    }
+    catch (Exception ex)
+    {
+        Log($"خطای ارسال: {ex.Message}");
+    }
         }
 
         private async Task SendToPeerAsync(SyncPacket packet, string peerId)

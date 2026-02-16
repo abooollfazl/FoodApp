@@ -32,6 +32,7 @@ namespace FoodApp.Services
             _networkService.ChatMessageReceived += OnChatMessageReceived;
             _networkService.SyncRequestReceived += OnSyncRequestReceived;
             _networkService.PeerDiscovered += OnPeerDiscovered;
+            _networkService.TcpPacketReceived += OnTcpPacketReceived;
 
             _isInitialized = true;
         }
@@ -203,5 +204,39 @@ namespace FoodApp.Services
         {
             _ = RequestFullSyncAsync();
         }
+
+
+
+        private void OnTcpPacketReceived(object? sender, SyncPacket packet)
+{
+    switch (packet.DataType)
+    {
+        case SyncDataType.MealPlan:
+            var mealPlan = JsonSerializer.Deserialize<MealPlan>(packet.JsonData);
+            if (mealPlan != null)
+                OnMealPlanReceived(this, mealPlan);
+            break;
+            
+        case SyncDataType.User:
+            var user = JsonSerializer.Deserialize<User>(packet.JsonData);
+            if (user != null)
+                OnUserReceived(this, user);
+            break;
+            
+        case SyncDataType.ChatMessage:
+            var chatMsg = JsonSerializer.Deserialize<ChatMessage>(packet.JsonData);
+            if (chatMsg != null)
+                OnChatMessageReceived(this, chatMsg);
+            break;
+    }
+        }
+
+
+
+
+
+
+
+        
     }
 }

@@ -1,7 +1,10 @@
+using System;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 using FoodApp.Models;
 
 namespace FoodApp.Services
@@ -11,55 +14,42 @@ namespace FoodApp.Services
         MealPlan,
         ChatMessage,
         User,
-        UserList,
         SyncRequest,
-        SyncAck
+        PeerDiscovery
     }
 
     public class SyncPacket
     {
-        public string PacketId { get; set; } = Guid.NewGuid().ToString();
         public string SenderId { get; set; } = string.Empty;
-        public string SenderName { get; set; } = "Unknown";
+        public string SenderName { get; set; } = string.Empty;
+        public string? TargetId { get; set; } // null = broadcast
         public SyncDataType DataType { get; set; }
         public string JsonData { get; set; } = string.Empty;
         public long Version { get; set; }
         public DateTime Timestamp { get; set; } = DateTime.Now;
-        public int HopCount { get; set; } = 0;
-        public int MaxHops { get; set; } = 10;
-    }
-
-    public class PeerInfo
-    {
-        public string DeviceId { get; set; } = string.Empty;
-        public string DeviceName { get; set; } = string.Empty;
-        public IPEndPoint? Endpoint { get; set; }
-        public DateTime LastSeen { get; set; } = DateTime.Now;
-        public bool IsDirectlyConnected { get; set; } = true;
     }
 
     public class MeshNetworkService
     {
         private UdpClient? _udpClient;
         private readonly int _port = 8888;
-        private readonly int _relayPort = 8889;
         private bool _isRunning = false;
         private string _deviceId = string.Empty;
         private string _deviceName = string.Empty;
-        
-        private readonly Dictionary<string, PeerInfo> _knownPeers = new();
-        private readonly HashSet<string> _processedPackets = new();
-        private readonly object _lockObj = new object();
-        
-        private readonly TimeSpan _peerTimeout = TimeSpan.FromMinutes(2);
-        private readonly TimeSpan _packetCacheTimeout = TimeSpan.FromMinutes(5);
 
+        // Thread-safe collections
+        private readonly ConcurrentDictionary<string, IPEndPoint> _knownPeers = new();
+        private readonly ConcurrentDictionary<string, DateTime> _lastSeen = new();
+        private readonly HashSet<string> _processedPackets = new();
+        private readonly object _lockObj = new();
+
+        // Events
         public event EventHandler<MealPlan>? MealPlanReceived;
         public event EventHandler<ChatMessage>? ChatMessageReceived;
         public event EventHandler<User>? UserReceived;
-        public event EventHandler<List<User>>? UserListReceived;
+        public event EventHandler<string>? SyncRequestReceived;
+        public event EventHandler<string>? PeerDiscovered;
         public event EventHandler<string>? LogMessage;
-        public event EventHandler<List<PeerInfo>>? PeersChanged;
 
         public MeshNetworkService()
         {
@@ -76,16 +66,14 @@ namespace FoodApp.Services
                 _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
                 _udpClient.EnableBroadcast = true;
-                
+
                 _isRunning = true;
 
                 _ = ReceiveLoopAsync();
                 _ = BroadcastPresenceAsync();
-                _ = CleanupLoopAsync();
-                _ = RelayListenerAsync();
+                _ = CleanupStalePeersAsync();
 
                 Log("شبکه Mesh استارت شد");
-                Log($"Device ID: {_deviceId}");
             }
             catch (Exception ex)
             {
@@ -101,15 +89,33 @@ namespace FoodApp.Services
                 {
                     var result = await _udpClient.ReceiveAsync();
                     var json = Encoding.UTF8.GetString(result.Buffer);
-                    
-                    if (string.IsNullOrWhiteSpace(json)) continue;
-                    
-                    var packet = JsonSerializer.Deserialize<SyncPacket>(json);
-                    if (packet == null || packet.SenderId == _deviceId) continue;
-                    
-                    if (packet.HopCount > packet.MaxHops) continue;
 
-                    await ProcessPacketAsync(packet, result.RemoteEndPoint);
+                    if (string.IsNullOrWhiteSpace(json)) continue;
+
+                    var packet = JsonSerializer.Deserialize<SyncPacket>(json);
+                    if (packet?.SenderId == null || packet.SenderId == _deviceId) continue;
+
+                    // Update peer info
+                    _knownPeers[packet.SenderId] = result.RemoteEndPoint;
+                    _lastSeen[packet.SenderId] = DateTime.Now;
+
+                    // Check for duplicate packets (prevent loops)
+                    var packetHash = $"{packet.SenderId}_{packet.Timestamp.Ticks}_{packet.DataType}";
+                    lock (_lockObj)
+                    {
+                        if (_processedPackets.Contains(packetHash)) continue;
+                        _processedPackets.Add(packetHash);
+                        
+                        // Cleanup old entries
+                        if (_processedPackets.Count > 5000)
+                        {
+                            var toRemove = _processedPackets.Take(3000).ToList();
+                            foreach (var p in toRemove) _processedPackets.Remove(p);
+                        }
+                    }
+
+                    // Process packet
+                    ProcessPacket(packet, result.RemoteEndPoint);
                 }
                 catch (Exception ex)
                 {
@@ -118,15 +124,14 @@ namespace FoodApp.Services
             }
         }
 
-        private async Task ProcessPacketAsync(SyncPacket packet, IPEndPoint senderEndpoint)
+        private void ProcessPacket(SyncPacket packet, IPEndPoint senderEndpoint)
         {
-            lock (_lockObj)
+            // Targeted packet and not for us? Relay it
+            if (!string.IsNullOrEmpty(packet.TargetId) && packet.TargetId != _deviceId)
             {
-                if (_processedPackets.Contains(packet.PacketId)) return;
-                _processedPackets.Add(packet.PacketId);
+                _ = RelayPacketAsync(packet, senderEndpoint);
+                return;
             }
-
-            UpdatePeer(packet.SenderId, packet.SenderName, senderEndpoint, true);
 
             switch (packet.DataType)
             {
@@ -134,15 +139,19 @@ namespace FoodApp.Services
                     var mealPlan = JsonSerializer.Deserialize<MealPlan>(packet.JsonData);
                     if (mealPlan != null)
                     {
-                        MainThread.BeginInvokeOnMainThread(() => MealPlanReceived?.Invoke(this, mealPlan));
+                        MealPlanReceived?.Invoke(this, mealPlan);
+                        // Relay to others (mesh)
+                        _ = RelayPacketAsync(packet, senderEndpoint);
                     }
                     break;
 
                 case SyncDataType.ChatMessage:
                     var chatMsg = JsonSerializer.Deserialize<ChatMessage>(packet.JsonData);
-                    if (chatMsg != null && !AuthService.IsManager())
+                    if (chatMsg != null)
                     {
-                        MainThread.BeginInvokeOnMainThread(() => ChatMessageReceived?.Invoke(this, chatMsg));
+                        ChatMessageReceived?.Invoke(this, chatMsg);
+                        // Relay to others (mesh)
+                        _ = RelayPacketAsync(packet, senderEndpoint);
                     }
                     break;
 
@@ -150,205 +159,116 @@ namespace FoodApp.Services
                     var user = JsonSerializer.Deserialize<User>(packet.JsonData);
                     if (user != null)
                     {
-                        MainThread.BeginInvokeOnMainThread(() => UserReceived?.Invoke(this, user));
-                    }
-                    break;
-
-                case SyncDataType.UserList:
-                    var userList = JsonSerializer.Deserialize<List<User>>(packet.JsonData);
-                    if (userList != null)
-                    {
-                        MainThread.BeginInvokeOnMainThread(() => UserListReceived?.Invoke(this, userList));
+                        UserReceived?.Invoke(this, user);
+                        // Relay to others (mesh)
+                        _ = RelayPacketAsync(packet, senderEndpoint);
                     }
                     break;
 
                 case SyncDataType.SyncRequest:
-                    await HandleSyncRequestAsync(packet.SenderId);
+                    SyncRequestReceived?.Invoke(this, packet.SenderId);
+                    break;
+
+                case SyncDataType.PeerDiscovery:
+                    PeerDiscovered?.Invoke(this, packet.SenderId);
                     break;
             }
-
-            await RelayPacketAsync(packet, senderEndpoint);
         }
 
         private async Task RelayPacketAsync(SyncPacket packet, IPEndPoint originalSender)
         {
-            if (packet.HopCount >= packet.MaxHops) return;
-
-            packet.HopCount++;
-
             try
             {
+                // Don't relay targeted packets
+                if (!string.IsNullOrEmpty(packet.TargetId)) return;
+
                 var json = JsonSerializer.Serialize(packet);
                 var bytes = Encoding.UTF8.GetBytes(json);
 
-                List<PeerInfo> peersToRelay;
-                lock (_lockObj)
+                // Relay to all known peers except original sender
+                foreach (var peer in _knownPeers)
                 {
-                    peersToRelay = _knownPeers.Values
-                        .Where(p => p.Endpoint != null && !p.Endpoint.Equals(originalSender))
-                        .ToList();
-                }
-
-                foreach (var peer in peersToRelay)
-                {
-                    if (peer.Endpoint != null)
+                    if (!peer.Value.Equals(originalSender))
                     {
-                        try
-                        {
-                            await _udpClient!.SendAsync(bytes, bytes.Length, peer.Endpoint);
-                        }
-                        catch { }
+                        await _udpClient!.SendAsync(bytes, bytes.Length, peer.Value);
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                Log($"خطای relay: {ex.Message}");
-            }
+            catch { /* Ignore relay errors */ }
         }
 
-        private async Task RelayListenerAsync()
-        {
-            try
-            {
-                using var relayClient = new UdpClient(_relayPort);
-                while (_isRunning)
-                {
-                    var result = await relayClient.ReceiveAsync();
-                    var json = Encoding.UTF8.GetString(result.Buffer);
-                    var packet = JsonSerializer.Deserialize<SyncPacket>(json);
-                    
-                    if (packet != null && packet.SenderId != _deviceId)
-                    {
-                        await ProcessPacketAsync(packet, result.RemoteEndPoint);
-                    }
-                }
-            }
-            catch { }
-        }
-
-        private void UpdatePeer(string deviceId, string deviceName, IPEndPoint endpoint, bool isDirect)
-        {
-            lock (_lockObj)
-            {
-                _knownPeers[deviceId] = new PeerInfo
-                {
-                    DeviceId = deviceId,
-                    DeviceName = deviceName,
-                    Endpoint = endpoint,
-                    LastSeen = DateTime.Now,
-                    IsDirectlyConnected = isDirect
-                };
-            }
-            MainThread.BeginInvokeOnMainThread(() => PeersChanged?.Invoke(this, GetPeers()));
-        }
-
-        private async Task BroadcastPresenceAsync()
-        {
-            while (_isRunning)
-            {
-                await Task.Delay(10000);
-                
-                var packet = new SyncPacket
-                {
-                    SenderId = _deviceId,
-                    SenderName = _deviceName,
-                    DataType = SyncDataType.SyncRequest,
-                    JsonData = "{}"
-                };
-                
-                await SendPacketAsync(packet, true);
-            }
-        }
-
-        private async Task CleanupLoopAsync()
-        {
-            while (_isRunning)
-            {
-                await Task.Delay(30000);
-                
-                lock (_lockObj)
-                {
-                    var now = DateTime.Now;
-                    var expiredPeers = _knownPeers
-                        .Where(p => now - p.Value.LastSeen > _peerTimeout)
-                        .Select(p => p.Key)
-                        .ToList();
-                    
-                    foreach (var peerId in expiredPeers)
-                    {
-                        _knownPeers.Remove(peerId);
-                    }
-                    
-                    if (expiredPeers.Count > 0)
-                    {
-                        MainThread.BeginInvokeOnMainThread(() => PeersChanged?.Invoke(this, GetPeers()));
-                    }
-                }
-            }
-        }
-
-        private async Task HandleSyncRequestAsync(string requesterId)
-        {
-            await Task.Delay(100);
-        }
+        // ========== Public Send Methods ==========
 
         public async Task BroadcastMealPlanAsync(MealPlan mealPlan)
         {
+            var currentUser = AuthService.GetCurrentUser();
             var packet = new SyncPacket
             {
                 SenderId = _deviceId,
-                SenderName = AuthService.GetCurrentUser()?.Name ?? "Unknown",
+                SenderName = currentUser?.Name ?? _deviceName,
                 DataType = SyncDataType.MealPlan,
                 JsonData = JsonSerializer.Serialize(mealPlan),
                 Version = mealPlan.Version
             };
-            
-            await SendPacketAsync(packet, true);
+            await BroadcastPacketAsync(packet);
+        }
+
+        public async Task SendMealPlanToPeerAsync(MealPlan mealPlan, string targetPeerId)
+        {
+            var currentUser = AuthService.GetCurrentUser();
+            var packet = new SyncPacket
+            {
+                SenderId = _deviceId,
+                SenderName = currentUser?.Name ?? _deviceName,
+                TargetId = targetPeerId,
+                DataType = SyncDataType.MealPlan,
+                JsonData = JsonSerializer.Serialize(mealPlan),
+                Version = mealPlan.Version
+            };
+            await SendToPeerAsync(packet, targetPeerId);
         }
 
         public async Task BroadcastChatMessageAsync(ChatMessage message)
         {
-            if (AuthService.IsManager()) return;
-
+            var currentUser = AuthService.GetCurrentUser();
             var packet = new SyncPacket
             {
                 SenderId = _deviceId,
-                SenderName = AuthService.GetCurrentUser()?.Name ?? "Unknown",
+                SenderName = currentUser?.Name ?? _deviceName,
                 DataType = SyncDataType.ChatMessage,
                 JsonData = JsonSerializer.Serialize(message),
                 Version = message.Version
             };
-            
-            await SendPacketAsync(packet, true);
+            await BroadcastPacketAsync(packet);
         }
 
         public async Task BroadcastUserAsync(User user)
         {
+            var currentUser = AuthService.GetCurrentUser();
             var packet = new SyncPacket
             {
                 SenderId = _deviceId,
-                SenderName = AuthService.GetCurrentUser()?.Name ?? "Unknown",
+                SenderName = currentUser?.Name ?? _deviceName,
                 DataType = SyncDataType.User,
                 JsonData = JsonSerializer.Serialize(user),
-                Version = DateTime.Now.Ticks
+                Version = 1
             };
-            
-            await SendPacketAsync(packet, true);
+            await BroadcastPacketAsync(packet);
         }
 
-        public async Task BroadcastUserListAsync(List<User> users)
+        public async Task SendUserToPeerAsync(User user, string targetPeerId)
         {
+            var currentUser = AuthService.GetCurrentUser();
             var packet = new SyncPacket
             {
                 SenderId = _deviceId,
-                SenderName = AuthService.GetCurrentUser()?.Name ?? "Unknown",
-                DataType = SyncDataType.UserList,
-                JsonData = JsonSerializer.Serialize(users),
-                Version = DateTime.Now.Ticks
+                SenderName = currentUser?.Name ?? _deviceName,
+                TargetId = targetPeerId,
+                DataType = SyncDataType.User,
+                JsonData = JsonSerializer.Serialize(user),
+                Version = 1
             };
-            
-            await SendPacketAsync(packet, true);
+            await SendToPeerAsync(packet, targetPeerId);
         }
 
         public async Task RequestSyncAsync()
@@ -360,40 +280,25 @@ namespace FoodApp.Services
                 DataType = SyncDataType.SyncRequest,
                 JsonData = "{}"
             };
-            
-            await SendPacketAsync(packet, true);
+            await BroadcastPacketAsync(packet);
         }
 
-        private async Task SendPacketAsync(SyncPacket packet, bool broadcast)
+        // ========== Private Send Helpers ==========
+
+        private async Task BroadcastPacketAsync(SyncPacket packet)
         {
-            if (_udpClient == null) return;
-            
             try
             {
                 var json = JsonSerializer.Serialize(packet);
                 var bytes = Encoding.UTF8.GetBytes(json);
 
-                if (broadcast)
-                {
-                    await _udpClient.SendAsync(bytes, bytes.Length, new IPEndPoint(IPAddress.Broadcast, _port));
-                }
+                // Broadcast to local network
+                await _udpClient!.SendAsync(bytes, bytes.Length, new IPEndPoint(IPAddress.Broadcast, _port));
 
-                List<PeerInfo> peers;
-                lock (_lockObj)
+                // Also send to all known peers directly (more reliable)
+                foreach (var peer in _knownPeers.Values)
                 {
-                    peers = _knownPeers.Values.Where(p => p.Endpoint != null).ToList();
-                }
-
-                foreach (var peer in peers)
-                {
-                    if (peer.Endpoint != null)
-                    {
-                        try
-                        {
-                            await _udpClient.SendAsync(bytes, bytes.Length, peer.Endpoint);
-                        }
-                        catch { }
-                    }
+                    await _udpClient.SendAsync(bytes, bytes.Length, peer);
                 }
             }
             catch (Exception ex)
@@ -402,11 +307,54 @@ namespace FoodApp.Services
             }
         }
 
-        public List<PeerInfo> GetPeers()
+        private async Task SendToPeerAsync(SyncPacket packet, string peerId)
         {
-            lock (_lockObj)
+            try
             {
-                return _knownPeers.Values.ToList();
+                if (_knownPeers.TryGetValue(peerId, out var endpoint))
+                {
+                    var json = JsonSerializer.Serialize(packet);
+                    var bytes = Encoding.UTF8.GetBytes(json);
+                    await _udpClient!.SendAsync(bytes, bytes.Length, endpoint);
+                }
+            }
+            catch { }
+        }
+
+        // ========== Background Tasks ==========
+
+        private async Task BroadcastPresenceAsync()
+        {
+            while (_isRunning)
+            {
+                await Task.Delay(5000); // Every 5 seconds
+
+                var packet = new SyncPacket
+                {
+                    SenderId = _deviceId,
+                    SenderName = _deviceName,
+                    DataType = SyncDataType.PeerDiscovery,
+                    JsonData = "{}"
+                };
+
+                await BroadcastPacketAsync(packet);
+            }
+        }
+
+        private async Task CleanupStalePeersAsync()
+        {
+            while (_isRunning)
+            {
+                await Task.Delay(30000); // Every 30 seconds
+
+                var cutoff = DateTime.Now.AddMinutes(-2);
+                var stalePeers = _lastSeen.Where(x => x.Value < cutoff).Select(x => x.Key).ToList();
+
+                foreach (var peerId in stalePeers)
+                {
+                    _knownPeers.TryRemove(peerId, out _);
+                    _lastSeen.TryRemove(peerId, out _);
+                }
             }
         }
 
@@ -418,5 +366,7 @@ namespace FoodApp.Services
             _udpClient?.Close();
             _udpClient?.Dispose();
         }
+
+        public IReadOnlyDictionary<string, IPEndPoint> GetKnownPeers() => _knownPeers;
     }
 }

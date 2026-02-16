@@ -5,8 +5,6 @@ using System.Threading.Tasks;
 using FoodApp.Database;
 using FoodApp.Models;
 using System.Text.Json;
-using System.Text.Json;
-using Newtonsoft.Json;
 
 namespace FoodApp.Services
 {

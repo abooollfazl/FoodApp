@@ -49,7 +49,7 @@ public partial class ManageUsersPage : ContentPage
                 await _database.DeleteUserAsync(user);
                 
                 // ✅ Broadcast حذف کاربر (با User خالی برای اطلاع‌رسانی)
-                await App.SyncService.BroadcastUserAsync(new User 
+                await App.SyncService.BroadcastUserAsync(new FoodApp.Models.User 
                 { 
                     Id = user.Id, 
                     Username = user.Username,
